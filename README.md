@@ -49,7 +49,7 @@ $$L_{pred}= L_y(G_y(G_f(x_i, \theta_f), \theta_y), y_i)$$
 $$L_{dom}= L_d(G_d(G_f(x_i, \theta_f), \theta_d), d_i)$$
 
 
-$$ image of the architecture $$
+![immagine](https://github.com/Giobordi/Activation_shaping_for_domain_adaptation/assets/129875197/8cd556a6-69cc-4879-b7dd-f13fb1adf114)
 
 The approach is similar to use a Stochastic Gradient Descent (SGD) , the only difference is that the gradient from the class and the domain prodictor are subtracted, otherwise the SGD would try to make the features dissimilar across domains to minimize the domain classification loss. This is done by adding a gradient reversal layer (GRL), this layer has no parameters so does not require params update, during the forward propagation it acts as an identity function, but during the backpropagation it multiplies the gradient by a negative constant (usually = -1). This new layer is inserted between the feature extractor and the domain classifier.
 This approach leads to the emergence of features that are domain-invariant and discriminative at the same time.
