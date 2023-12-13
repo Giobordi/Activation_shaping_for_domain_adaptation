@@ -69,3 +69,5 @@ Compared to previous methods :
 - more flexible in terms of layer placement
 - better OOD detection performance
 - better accuracy
+
+![immagine](https://github.com/Giobordi/Activation_shaping_for_domain_adaptation/assets/129875197/419f041c-cc69-401e-bd31-11a6a3565ed9)
