@@ -54,3 +54,18 @@ $$L_{dom}= L_d(G_d(G_f(x_i, \theta_f), \theta_d), d_i)$$
 The approach is similar to use a Stochastic Gradient Descent (SGD) , the only difference is that the gradient from the class and the domain prodictor are subtracted, otherwise the SGD would try to make the features dissimilar across domains to minimize the domain classification loss. This is done by adding a gradient reversal layer (GRL), this layer has no parameters so does not require params update, during the forward propagation it acts as an identity function, but during the backpropagation it multiplies the gradient by a negative constant (usually = -1). This new layer is inserted between the feature extractor and the domain classifier.
 This approach leads to the emergence of features that are domain-invariant and discriminative at the same time.
 
+
+Paper : https://www.researchgate.net/publication/372420733_Extremely_Simple_Activation_Shaping_for_Out-of-Distribution_Detection
+
+Extremely simple post-hoc, on-the-fly activation shaping called ASH (Activation Shaping) where the large portion (e.g., 90%) of samples at a late layer is removed and the rest simplified/adjusted. This shaping is applied at inference time and does not require any stats from training data.
+
+The *post hoc* methods are becoming more and more popular due the popularity of Large models, indeed re-training is a very expensive operation.
+
+###image
+
+The ASH method take as input the feature maps of a layer (usually a late layer), the 90% is removed (using a simple Top_K criterion) and the remaining 10% is simplified/adjusted (e.g. assign a constant value). \
+Compared to previous methods : 
+- no global thresholds calculated from training data
+- more flexible in terms of layer placement
+- better OOD detection performance
+- better accuracy
