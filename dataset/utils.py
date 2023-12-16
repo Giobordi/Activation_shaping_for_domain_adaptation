@@ -82,9 +82,12 @@ class SeededDataLoader(DataLoader):
             generator.manual_seed(CONFIG.seed)
 
             worker_init_fn = seed_worker
-        
-        super().__init__(dataset, batch_size, shuffle, sampler, batch_sampler, num_workers, collate_fn, 
-                         pin_memory, drop_last, timeout, worker_init_fn, multiprocessing_context, generator, 
-                         prefetch_factor=prefetch_factor, persistent_workers=persistent_workers, 
+
+        if CONFIG.device == 'mps':
+            worker_init_fn = None
+
+        super().__init__(dataset, batch_size, shuffle, sampler, batch_sampler, num_workers, collate_fn,
+                         pin_memory, drop_last, timeout, worker_init_fn, multiprocessing_context, generator,
+                         prefetch_factor=prefetch_factor, persistent_workers=persistent_workers,
                          pin_memory_device=pin_memory_device)
 

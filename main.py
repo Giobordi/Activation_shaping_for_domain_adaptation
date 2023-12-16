@@ -16,6 +16,7 @@ from models.resnet import BaseResNet18
 
 from globals import CONFIG
 
+
 @torch.no_grad()
 def evaluate(model, data):
     model.eval()
@@ -25,12 +26,19 @@ def evaluate(model, data):
 
     loss = [0.0, 0]
     for x, y in tqdm(data):
-        with torch.autocast(device_type=CONFIG.device, dtype=torch.float16, enabled=True):
+        if CONFIG.device == 'mps':
             x, y = x.to(CONFIG.device), y.to(CONFIG.device)
             logits = model(x)
             acc_meter.update(logits, y)
             loss[0] += F.cross_entropy(logits, y).item()
             loss[1] += x.size(0)
+        else:
+            with torch.autocast(device_type=CONFIG.device, dtype=torch.float16, enabled=True):
+                x, y = x.to(CONFIG.device), y.to(CONFIG.device)
+                logits = model(x)
+                acc_meter.update(logits, y)
+                loss[0] += F.cross_entropy(logits, y).item()
+                loss[1] += x.size(0)
     
     accuracy = acc_meter.compute()
     loss = loss[0] / loss[1]
@@ -58,10 +66,7 @@ def train(model, data):
         model.train()
         
         for batch_idx, batch in enumerate(tqdm(data['train'])):
-            
-            # Compute loss
-            with torch.autocast(device_type=CONFIG.device, dtype=torch.float16, enabled=True):
-
+            if CONFIG.device == 'mps':
                 if CONFIG.experiment in ['baseline']:
                     x, y = batch
                     x, y = x.to(CONFIG.device), y.to(CONFIG.device)
@@ -72,13 +77,35 @@ def train(model, data):
 
                 ######################################################
 
-            # Optimization step
-            scaler.scale(loss / CONFIG.grad_accum_steps).backward()
+                # Optimization step
+                (loss / CONFIG.grad_accum_steps).backward()
 
-            if ((batch_idx + 1) % CONFIG.grad_accum_steps == 0) or (batch_idx + 1 == len(data['train'])):
-                scaler.step(optimizer)
-                optimizer.zero_grad(set_to_none=True)
-                scaler.update()
+                if ((batch_idx + 1) % CONFIG.grad_accum_steps == 0) or (batch_idx + 1 == len(data['train'])):
+                    # scaler.step(optimizer)
+                    optimizer.step()
+                    optimizer.zero_grad(set_to_none=True)
+                    # scaler.update()
+            else:
+                # Compute loss
+                with torch.autocast(device_type=CONFIG.device, dtype=torch.float16, enabled=True):
+                    if CONFIG.experiment in ['baseline']:
+                        x, y = batch
+                        x, y = x.to(CONFIG.device), y.to(CONFIG.device)
+                        loss = F.cross_entropy(model(x), y)
+
+                    ######################################################
+                    # elif... TODO: Add here train logic for the other experiments
+
+                    ######################################################
+
+                    # Optimization step
+                    scaler.scale(loss / CONFIG.grad_accum_steps).backward()
+
+                    if ((batch_idx + 1) % CONFIG.grad_accum_steps == 0) or (batch_idx + 1 == len(data['train'])):
+                        scaler.step(optimizer)
+                        optimizer.step()
+                        optimizer.zero_grad(set_to_none=True)
+                        scaler.update()
 
         scheduler.step()
         
