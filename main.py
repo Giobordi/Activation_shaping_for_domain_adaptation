@@ -12,7 +12,7 @@ import numpy as np
 from parse_args import parse_arguments
 
 from dataset import PACS
-from models.resnet import BaseResNet18
+from models.resnet import BaseResNet18, ASHResNet18
 
 from globals import CONFIG
 
@@ -67,7 +67,7 @@ def train(model, data):
         
         for batch_idx, batch in enumerate(tqdm(data['train'])):
             if CONFIG.device == 'mps':
-                if CONFIG.experiment in ['baseline']:
+                if CONFIG.experiment in ['baseline', 'ash_hook']:
                     x, y = batch
                     x, y = x.to(CONFIG.device), y.to(CONFIG.device)
                     loss = F.cross_entropy(model(x), y)
@@ -88,7 +88,7 @@ def train(model, data):
             else:
                 # Compute loss
                 with torch.autocast(device_type=CONFIG.device, dtype=torch.float16, enabled=True):
-                    if CONFIG.experiment in ['baseline']:
+                    if CONFIG.experiment in ['baseline', 'ash_hook']:
                         x, y = batch
                         x, y = x.to(CONFIG.device), y.to(CONFIG.device)
                         loss = F.cross_entropy(model(x), y)
@@ -131,6 +131,8 @@ def main():
     # Load model
     if CONFIG.experiment in ['baseline']:
         model = BaseResNet18()
+    elif CONFIG.experiment in ['ash_hook']:
+        model = ASHResNet18()
 
     ######################################################
     #elif... TODO: Add here model loading for the other experiments (eg. DA and optionally DG)

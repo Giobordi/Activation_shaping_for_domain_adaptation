@@ -6,7 +6,7 @@ from torchvision.datasets import CIFAR10
 import numpy as np
 import random
 from PIL import Image
-
+import os
 from globals import CONFIG
 
 class BaseDataset(Dataset):
@@ -83,8 +83,9 @@ class SeededDataLoader(DataLoader):
 
             worker_init_fn = seed_worker
 
-        if CONFIG.device == 'mps':
+        if CONFIG.device == 'mps' or os.name == 'nt':
             worker_init_fn = None
+        
 
         super().__init__(dataset, batch_size, shuffle, sampler, batch_sampler, num_workers, collate_fn,
                          pin_memory, drop_last, timeout, worker_init_fn, multiprocessing_context, generator,
