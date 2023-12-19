@@ -30,7 +30,7 @@ class BaseResNet18(nn.Module):
 
 def activation_shaping_hook(module: nn.Module, input : torch.Tensor, output: torch.Tensor):
     mask = torch.where(torch.rand_like(output) < 0.2, 0.0, 1.0) 
-    new_output =  output * mask
+    new_output = torch.where(output * mask > 0, 1.0, 0.0)
     return new_output
     
 

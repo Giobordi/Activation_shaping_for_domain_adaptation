@@ -64,8 +64,10 @@ def train(model, data):
     # Optimization loop
     for epoch in range(cur_epoch, CONFIG.epochs):
         model.train()
-        
-        for batch_idx, batch in enumerate(tqdm(data['train'])):
+
+        tqdm_iterator = tqdm(data['train'])
+        for batch_idx, batch in enumerate(tqdm_iterator):
+            tqdm_iterator.set_description(f'current epoch {epoch}/{CONFIG.epochs}')
             if CONFIG.device == 'mps':
                 if CONFIG.experiment in ['baseline', 'ash_hook']:
                     x, y = batch
