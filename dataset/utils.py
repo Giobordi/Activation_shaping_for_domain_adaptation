@@ -25,13 +25,15 @@ class BaseDataset(Dataset):
         return x, y
 
 ######################################################
-# TODO: modify 'BaseDataset' for the Domain Adaptation setting.
 class DomainAdaptationDataset(Dataset):
    def __init__(self, source_examples, target_examples, transform):
         self.source_examples = source_examples
         self.target_examples = target_examples
         self.T = transform
-   
+        ## shuffle the target examples
+        random.shuffle(self.target_examples)
+
+
    def __len__(self):
        return len(self.source_examples) #equal to len(target_examples)
    
@@ -41,8 +43,10 @@ class DomainAdaptationDataset(Dataset):
         src_x = self.T(src_x).to(CONFIG.dtype)
         src_y = torch.tensor(src_y).long()
 
-        # TODO insert a random choice in case of index > len(target_examples)
-        targ_x = random.choice(self.target_examples)[0] ## TODO change shuffling the target examples and take the index position
+        if index >= len(self.target_examples):
+            targ_x = random.choice(self.target_examples)[0]
+        else:
+            targ_x = self.target_examples[index][0]
         targ_x = Image.open(targ_x).convert('RGB')
         targ_x = self.T(targ_x).to(CONFIG.dtype)
 
