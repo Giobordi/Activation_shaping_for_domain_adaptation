@@ -12,7 +12,7 @@ import numpy as np
 from parse_args import parse_arguments
 
 from dataset import PACS
-from models.resnet import BaseResNet18, ASHResNet18
+from models.resnet import BaseResNet18, ASHResNet18, ASHResNet18DA
 
 from globals import CONFIG
 
@@ -67,7 +67,7 @@ def train(model, data):
 
         tqdm_iterator = tqdm(data['train'])
         for batch_idx, batch in enumerate(tqdm_iterator):
-            tqdm_iterator.set_description(f'current epoch {epoch}/{CONFIG.epochs}')
+            tqdm_iterator.set_description(f'current epoch {epoch + 1}/{CONFIG.epochs}')
             if CONFIG.device == 'mps':
                 if CONFIG.experiment in ['baseline', 'ash_hook']:
                     x, y = batch
@@ -90,15 +90,19 @@ def train(model, data):
             else:
                 # Compute loss
                 with torch.autocast(device_type=CONFIG.device, dtype=torch.float16, enabled=True):
-                    if CONFIG.experiment in ['baseline', 'ash_hook']:
+                    if CONFIG.experiment in ['baseline', 'ash_hook',"ash_hook_random_mask_alternate_conv_02",\
+                                             "ash_hook_random_mask_each3layer_conv_02",\
+                                                 "ash_soft_hook_Lastlayer_conv_02" ]:
                         x, y = batch
                         x, y = x.to(CONFIG.device), y.to(CONFIG.device)
                         loss = F.cross_entropy(model(x), y)
 
-                    ######################################################
-                    # elif... TODO: Add here train logic for the other experiments
+                    elif CONFIG.experiment in ['domain_adaptation']:
+                        source_x, source_y, target_x = batch
+                        source_x, source_y , target_x = source_x.to(CONFIG.device), source_y.to(CONFIG.device) , target_x.to(CONFIG.device)
 
-                    ######################################################
+                        source_output = model(source_x, target_x)
+                        loss = F.cross_entropy(source_output, source_y)
 
                     # Optimization step
                     scaler.scale(loss / CONFIG.grad_accum_steps).backward()
@@ -133,14 +137,14 @@ def main():
     # Load model
     if CONFIG.experiment in ['baseline']:
         model = BaseResNet18()
-    elif CONFIG.experiment in ['ash_hook']:
+    elif CONFIG.experiment in ['ash_hook','ash_hook_random_mask_alternate_conv_02', \
+                               "ash_hook_random_mask_each3layer_conv_02" ,\
+                                "ash_soft_hook_Lastlayer_conv_02"]:
         model = ASHResNet18()
 
-    ######################################################
-    #elif... TODO: Add here model loading for the other experiments (eg. DA and optionally DG)
+    elif CONFIG.experiment in ['domain_adaptation']:
+        model = ASHResNet18DA()
 
-    ######################################################
-    
     model.to(CONFIG.device)
 
     if not CONFIG.test_only:
@@ -151,7 +155,7 @@ def main():
 
 if __name__ == '__main__':
     warnings.filterwarnings('ignore', category=UserWarning)
-
+    print(os.getpid())
     # Parse arguments
     args = parse_arguments()
     CONFIG.update(vars(args))
@@ -171,7 +175,7 @@ if __name__ == '__main__':
     # Set experiment's device & deterministic behavior
     if CONFIG.cpu:
         CONFIG.device = torch.device('cpu')
-
+    print(CONFIG.device)
     torch.manual_seed(CONFIG.seed)
     random.seed(CONFIG.seed)
     np.random.seed(CONFIG.seed)
