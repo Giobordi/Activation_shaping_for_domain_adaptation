@@ -12,7 +12,7 @@ import numpy as np
 from parse_args import parse_arguments
 
 from dataset import PACS
-from models.resnet import BaseResNet18, ASHResNet18, ASHResNet18DA
+from models.resnet import BaseResNet18, ASHResNet18, ASHResNet18DA, ASHResNet18DomainGeneralization
 
 from globals import CONFIG
 
@@ -74,11 +74,6 @@ def train(model, data):
                     x, y = x.to(CONFIG.device), y.to(CONFIG.device)
                     loss = F.cross_entropy(model(x), y)
 
-                ######################################################
-                #elif... TODO: Add here train logic for the other experiments
-
-                ######################################################
-
                 # Optimization step
                 (loss / CONFIG.grad_accum_steps).backward()
 
@@ -90,9 +85,7 @@ def train(model, data):
             else:
                 # Compute loss
                 with torch.autocast(device_type=CONFIG.device, dtype=torch.float16, enabled=True):
-                    if CONFIG.experiment in ['baseline', 'ash_hook',"ash_hook_random_mask_alternate_conv_02",\
-                                             "ash_hook_random_mask_each3layer_conv_02",\
-                                                 "ash_soft_hook_Lastlayer_conv_02" ]:
+                    if CONFIG.experiment in ['baseline', "select_layer_all" , "select_layer_each2","select_layer_each3","select_layer_first", "select_layer_middle", "select_layer_last"]:
                         x, y = batch
                         x, y = x.to(CONFIG.device), y.to(CONFIG.device)
                         loss = F.cross_entropy(model(x), y)
@@ -100,9 +93,16 @@ def train(model, data):
                     elif CONFIG.experiment in ['domain_adaptation']:
                         source_x, source_y, target_x = batch
                         source_x, source_y , target_x = source_x.to(CONFIG.device), source_y.to(CONFIG.device) , target_x.to(CONFIG.device)
-
                         source_output = model(source_x, target_x)
                         loss = F.cross_entropy(source_output, source_y)
+
+                    elif CONFIG.experiment in ['domain_generalization']:
+                        source_xs1,source_xs2,source_xs3, source_y = batch  #combines all the source domains
+                        source_xs1,source_xs2,source_xs3, source_y = source_xs1.to(CONFIG.device), source_xs2.to(CONFIG.device),source_xs3.to(CONFIG.device), source_y.type(torch.long).to(CONFIG.device)
+                        loss = F.cross_entropy(
+                            model((source_xs1,source_xs2,source_xs3)),
+                            torch.cat((source_y, source_y, source_y))
+                            )
 
                     # Optimization step
                     scaler.scale(loss / CONFIG.grad_accum_steps).backward()
@@ -137,13 +137,14 @@ def main():
     # Load model
     if CONFIG.experiment in ['baseline']:
         model = BaseResNet18()
-    elif CONFIG.experiment in ['ash_hook','ash_hook_random_mask_alternate_conv_02', \
-                               "ash_hook_random_mask_each3layer_conv_02" ,\
-                                "ash_soft_hook_Lastlayer_conv_02"]:
+    elif CONFIG.experiment in ["select_layer_all", "select_layer_each2","select_layer_each3", "select_layer_first", "select_layer_middle", "select_layer_last"]:
         model = ASHResNet18()
 
     elif CONFIG.experiment in ['domain_adaptation']:
         model = ASHResNet18DA()
+
+    elif CONFIG.experiment in ['domain_generalization']:
+        model = ASHResNet18DomainGeneralization()
 
     model.to(CONFIG.device)
 

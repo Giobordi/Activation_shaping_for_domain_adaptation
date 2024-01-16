@@ -30,8 +30,6 @@ class DomainAdaptationDataset(Dataset):
         self.source_examples = source_examples
         self.target_examples = target_examples
         self.T = transform
-        ## shuffle the target examples
-        random.shuffle(self.target_examples)
 
 
    def __len__(self):
@@ -42,11 +40,9 @@ class DomainAdaptationDataset(Dataset):
         src_x = Image.open(src_x).convert('RGB')
         src_x = self.T(src_x).to(CONFIG.dtype)
         src_y = torch.tensor(src_y).long()
-
-        if index >= len(self.target_examples):
-            targ_x = random.choice(self.target_examples)[0]
-        else:
-            targ_x = self.target_examples[index][0]
+        
+        targ_x = random.choice(self.target_examples)[0]
+        
         targ_x = Image.open(targ_x).convert('RGB')
         targ_x = self.T(targ_x).to(CONFIG.dtype)
 
@@ -54,19 +50,23 @@ class DomainAdaptationDataset(Dataset):
 
 # [OPTIONAL] TODO: modify 'BaseDataset' for the Domain Generalization setting. 
 # Hint: combine the examples from the 3 source domains into a single 'examples' list
-#class DomainGeneralizationDataset(Dataset):
-#    def __init__(self, examples, transform):
-#        self.examples = examples
-#        self.T = transform
-#    
-#    def __len__(self):
-#        return len(self.examples)
-#    
-#    def __getitem__(self, index):
-#        x1, x2, x3 = self.examples[index]
-#        x1, x2, x3 = self.T(x1), self.T(x2), self.T(x3)
-#        targ_x = self.T(targ_x)
-#        return x1, x2, x3
+class DomainGeneralizationDataset(Dataset):
+    def __init__(self, examples, transform):
+        self.examples = examples
+        self.T = transform
+   
+    def __len__(self):
+        return len(self.examples)
+   
+    def __getitem__(self, index):
+        x1, x2, x3, y = self.examples[index]
+        x1, x2, x3 = Image.open(x1).convert('RGB'), Image.open(x2).convert('RGB'), Image.open(x3).convert('RGB')
+        x1, x2, x3 = self.T(x1), self.T(x2), self.T(x3)
+        x1, x2, x3 = x1.to(CONFIG.dtype), x2.to(CONFIG.dtype), x3.to(CONFIG.dtype)
+        y = torch.tensor(y).long()
+        y = y.to(CONFIG.dtype)
+
+        return x1, x2, x3 , y
 
 ######################################################
 

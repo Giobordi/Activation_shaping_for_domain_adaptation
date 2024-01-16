@@ -1,11 +1,37 @@
 import torch
 import os
 import torchvision.transforms as T
-from dataset.utils import BaseDataset , DomainAdaptationDataset#, DomainGeneralizationDataset
+from dataset.utils import BaseDataset , DomainAdaptationDataset, DomainGeneralizationDataset
 from dataset.utils import SeededDataLoader
-
+import numpy as np
 from globals import CONFIG
 
+def domain_combination(domains_list : list):
+    num_classes = 7
+    domain_combination = list()
+    for label in range(num_classes):
+        dom_one = domains_list[0][domains_list[0][:,1] == str(label)]
+        dom_two = domains_list[1][domains_list[1][:,1] == str(label)]
+        dom_three = domains_list[2][domains_list[2][:,1] == str(label)]        
+        max_length = max(len(dom_one), len(dom_two), len(dom_three))
+        for index in range(max_length):
+            tmp = list()
+            if index < len(dom_one):
+                tmp.append(dom_one[index][0])
+            else : 
+                tmp.append(dom_one[np.random.randint(0,len(dom_one))][0])
+            if index < len(dom_two):
+                tmp.append(dom_two[index][0])
+            else :
+                tmp.append(dom_two[np.random.randint(0,len(dom_two))][0])
+            if index < len(dom_three):
+                tmp.append(dom_three[index][0])
+            else :
+                tmp.append(dom_three[np.random.randint(0,len(dom_three))][0])
+            tmp.append(label)
+            domain_combination.append(tuple(tmp))
+    return domain_combination
+            
 def get_transform(size, mean, std, preprocess):
     transform = []
     if preprocess:
@@ -32,32 +58,64 @@ def load_data():
     source_examples, target_examples = [], []
 
     # Load source
-    with open(os.path.join(CONFIG.dataset_args['root'], f"{CONFIG.dataset_args['source_domain']}.txt"), 'r') as f:
-        lines = f.readlines()
-    for line in lines:
-        line = line.strip().split()
-        path, label = line[0].split('/')[1:], int(line[1])
-        source_examples.append((os.path.join(CONFIG.dataset_args['root'], *path), label))
+    if CONFIG.experiment not in ['domain_generalization']:
+        with open(os.path.join(CONFIG.dataset_args['root'], f"{CONFIG.dataset_args['source_domain']}.txt"), 'r') as f:
+            lines = f.readlines()
+        for line in lines:
+            line = line.strip().split()
+            path, label = line[0].split('/')[1:], int(line[1])
+            source_examples.append((os.path.join(CONFIG.dataset_args['root'], *path), label))
 
-    # Load target
-    with open(os.path.join(CONFIG.dataset_args['root'], f"{CONFIG.dataset_args['target_domain']}.txt"), 'r') as f:
-        lines = f.readlines()
-    for line in lines:
-        line = line.strip().split()
-        path, label = line[0].split('/')[1:], int(line[1])
-        target_examples.append((os.path.join(CONFIG.dataset_args['root'], *path), label))
-    
-    if CONFIG.experiment in ['baseline', 'ash_hook', \
-                             "ash_hook_random_mask_alternate_conv_02","ash_hook_random_mask_each3layer_conv_02",\
-                                "ash_soft_hook_Lastlayer_conv_02"]:
-        train_dataset = BaseDataset(source_examples, transform=train_transform)
+        # Load target
+        with open(os.path.join(CONFIG.dataset_args['root'], f"{CONFIG.dataset_args['target_domain']}.txt"), 'r') as f:
+            lines = f.readlines()
+        for line in lines:
+            line = line.strip().split()
+            path, label = line[0].split('/')[1:], int(line[1])
+            target_examples.append((os.path.join(CONFIG.dataset_args['root'], *path), label))
+        
+        if CONFIG.experiment in ['baseline', 'select_layer_all',"select_layer_each2", "select_layer_each3","select_layer_first", "select_layer_middle", "select_layer_last"]:
+            train_dataset = BaseDataset(source_examples, transform=train_transform)
+            test_dataset = BaseDataset(target_examples, transform=test_transform)
+
+        elif CONFIG.experiment in ['domain_adaptation'] :
+            train_dataset = DomainAdaptationDataset(source_examples=source_examples, target_examples=target_examples, \
+                                                    transform=train_transform) 
+            test_dataset = BaseDataset(target_examples, transform=test_transform)
+
+    elif CONFIG.experiment in ['domain_generalization']:
+        # load all examples from all the target domains
+        cartoon_path = os.path.join(CONFIG.dataset_args['root'], "cartoon.txt")
+        photo_path = os.path.join(CONFIG.dataset_args['root'], "photo.txt")
+        sketch_path = os.path.join(CONFIG.dataset_args['root'], "sketch.txt")
+        art_painting = os.path.join(CONFIG.dataset_args['root'], "art_painting.txt")
+
+        domains = [cartoon_path, photo_path, sketch_path, art_painting]
+        domains.remove(os.path.join(CONFIG.dataset_args['root'], f"{CONFIG.dataset_args['target_domain']}.txt"))
+        # three source domains
+        domains_list = list()
+        for domain in domains:
+            tmp = list()
+            with open(domain, 'r') as f:
+                lines = f.readlines()
+            for line in lines:
+                line = line.strip().split()
+                path, label = line[0].split('/')[1:], int(line[1])
+                tmp.append((os.path.join(CONFIG.dataset_args['root'], *path), label))
+            domains_list.append(np.array(tmp))
+        source_examples = domain_combination(domains_list)
+
+        # target domain       
+        with open(os.path.join(CONFIG.dataset_args['root'], f"{CONFIG.dataset_args['target_domain']}.txt"), 'r') as f:
+            lines = f.readlines()
+        for line in lines:
+            line = line.strip().split()
+            path, label = line[0].split('/')[1:], int(line[1])
+            target_examples.append((os.path.join(CONFIG.dataset_args['root'], *path), label))
+
+        train_dataset = DomainGeneralizationDataset(examples=source_examples, transform=train_transform)
         test_dataset = BaseDataset(target_examples, transform=test_transform)
-
-    elif CONFIG.experiment in ['domain_adaptation'] :
-        train_dataset = DomainAdaptationDataset(source_examples=source_examples, target_examples=target_examples, \
-                                                transform=train_transform) 
-        test_dataset = BaseDataset(target_examples, transform=test_transform)
-
+        
     # Dataloaders
     train_loader = SeededDataLoader(
         train_dataset,
