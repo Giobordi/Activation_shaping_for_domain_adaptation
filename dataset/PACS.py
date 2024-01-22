@@ -1,3 +1,4 @@
+import random
 import torch
 import os
 import torchvision.transforms as T
@@ -20,18 +21,42 @@ def domain_combination(domains_list : list):
                 tmp.append(dom_one[index][0])
             else : 
                 tmp.append(dom_one[np.random.randint(0,len(dom_one))][0])
+                # with data augmentation
+                #tmp.append(data_augmentation(dom_one[np.random.randint(0,len(dom_one))][0]))
             if index < len(dom_two):
                 tmp.append(dom_two[index][0])
             else :
                 tmp.append(dom_two[np.random.randint(0,len(dom_two))][0])
+                # with data augmentation
+                #tmp.append(data_augmentation(dom_two[np.random.randint(0,len(dom_two))][0]))
             if index < len(dom_three):
                 tmp.append(dom_three[index][0])
             else :
                 tmp.append(dom_three[np.random.randint(0,len(dom_three))][0])
+                # with data augmentation
+                #tmp.append(data_augmentation(dom_three[np.random.randint(0,len(dom_three))][0]))
             tmp.append(label)
             domain_combination.append(tuple(tmp))
     return domain_combination
             
+def data_augmentation(input : torch.Tensor):
+    # input: tensor of shape (3, 224, 224) 
+    #randomly apply a data augmentation technique
+    techniques = random.choice([i for i in range(3)])
+    if techniques == 0:
+        ## horizontal flip plus 90° rotation
+        tranformation = T.Compose([T.RandomHorizontalFlip(p=1.0), T.RandomRotation(degrees=90)])
+    if techniques == 1:
+        ## vertical flip plus color jitter variation
+        tranformation = T.Compose([T.RandomVerticalFlip(p=1.0), T.ColorJitter(brightness=0.2, contrast=0.7, saturation=0.3, hue=0.5)])
+    if techniques == 2:
+        ## ramdom invertion the color of the image and random rotation 30°
+        tranformation = T.Compose([T.RandomInvert(p=1.0), T.RandomRotation(degrees=30)])
+
+    return tranformation(input)
+
+
+
 def get_transform(size, mean, std, preprocess):
     transform = []
     if preprocess:
