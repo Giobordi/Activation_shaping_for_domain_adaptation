@@ -21,5 +21,6 @@ def parse_arguments():
     parser.add_argument('--epochs', type=int, default=30)
     parser.add_argument('--num_workers', type=int, default=5)
     parser.add_argument('--grad_accum_steps', type=int, default=1)
+    parser.add_argument('--layer', type=str, default='middle')
 
     return _clear_args(parser.parse_args())

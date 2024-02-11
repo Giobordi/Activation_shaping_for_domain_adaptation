@@ -12,7 +12,7 @@ import numpy as np
 from parse_args import parse_arguments
 
 from dataset import PACS
-from models.resnet import BaseResNet18, ASHResNet18, ASHResNet18DA, ASHResNet18DomainGeneralization
+from models.resnet import BaseResNet18, ASHResNet18, ASHResNet18DA, ASHResNet18DomainGeneralization, ASHResNet18BinarizationAblation
 
 from globals import CONFIG
 
@@ -68,50 +68,35 @@ def train(model, data):
         tqdm_iterator = tqdm(data['train'])
         for batch_idx, batch in enumerate(tqdm_iterator):
             tqdm_iterator.set_description(f'current epoch {epoch + 1}/{CONFIG.epochs}')
-            if CONFIG.device == 'mps':
-                if CONFIG.experiment in ['baseline', 'ash_hook']:
+            # Compute loss
+            with torch.autocast(device_type=CONFIG.device, dtype=torch.float16, enabled=True):
+                if CONFIG.experiment in ['baseline', "binarization_ablation" , "topKvalue","select_layer"]:
                     x, y = batch
                     x, y = x.to(CONFIG.device), y.to(CONFIG.device)
                     loss = F.cross_entropy(model(x), y)
 
+                elif CONFIG.experiment in ['domain_adaptation', "binarization_ablation_DA" , "topKvalue_DA"]:
+                    source_x, source_y, target_x = batch
+                    source_x, source_y , target_x = source_x.to(CONFIG.device), source_y.to(CONFIG.device) , target_x.to(CONFIG.device)
+                    source_output = model(source_x, target_x)
+                    loss = F.cross_entropy(source_output, source_y)
+
+                elif CONFIG.experiment in ['domain_generalization']:
+                    source_xs1,source_xs2,source_xs3, source_y = batch  #combines all the source domains
+                    source_xs1,source_xs2,source_xs3, source_y = source_xs1.to(CONFIG.device), source_xs2.to(CONFIG.device),source_xs3.to(CONFIG.device), source_y.type(torch.long).to(CONFIG.device)
+                    loss = F.cross_entropy(
+                        model((source_xs1,source_xs2,source_xs3)),
+                        torch.cat((source_y, source_y, source_y))
+                        )
+
                 # Optimization step
-                (loss / CONFIG.grad_accum_steps).backward()
+                scaler.scale(loss / CONFIG.grad_accum_steps).backward()
 
                 if ((batch_idx + 1) % CONFIG.grad_accum_steps == 0) or (batch_idx + 1 == len(data['train'])):
-                    # scaler.step(optimizer)
+                    scaler.step(optimizer)
                     optimizer.step()
                     optimizer.zero_grad(set_to_none=True)
-                    # scaler.update()
-            else:
-                # Compute loss
-                with torch.autocast(device_type=CONFIG.device, dtype=torch.float16, enabled=True):
-                    if CONFIG.experiment in ['baseline', "select_layer_all" , "select_layer_each2","select_layer_each3","select_layer_first", "select_layer_middle", "select_layer_last"]:
-                        x, y = batch
-                        x, y = x.to(CONFIG.device), y.to(CONFIG.device)
-                        loss = F.cross_entropy(model(x), y)
-
-                    elif CONFIG.experiment in ['domain_adaptation']:
-                        source_x, source_y, target_x = batch
-                        source_x, source_y , target_x = source_x.to(CONFIG.device), source_y.to(CONFIG.device) , target_x.to(CONFIG.device)
-                        source_output = model(source_x, target_x)
-                        loss = F.cross_entropy(source_output, source_y)
-
-                    elif CONFIG.experiment in ['domain_generalization']:
-                        source_xs1,source_xs2,source_xs3, source_y = batch  #combines all the source domains
-                        source_xs1,source_xs2,source_xs3, source_y = source_xs1.to(CONFIG.device), source_xs2.to(CONFIG.device),source_xs3.to(CONFIG.device), source_y.type(torch.long).to(CONFIG.device)
-                        loss = F.cross_entropy(
-                            model((source_xs1,source_xs2,source_xs3)),
-                            torch.cat((source_y, source_y, source_y))
-                            )
-
-                    # Optimization step
-                    scaler.scale(loss / CONFIG.grad_accum_steps).backward()
-
-                    if ((batch_idx + 1) % CONFIG.grad_accum_steps == 0) or (batch_idx + 1 == len(data['train'])):
-                        scaler.step(optimizer)
-                        optimizer.step()
-                        optimizer.zero_grad(set_to_none=True)
-                        scaler.update()
+                    scaler.update()
 
         scheduler.step()
         
@@ -137,10 +122,11 @@ def main():
     # Load model
     if CONFIG.experiment in ['baseline']:
         model = BaseResNet18()
-    elif CONFIG.experiment in ["select_layer_all", "select_layer_each2","select_layer_each3", "select_layer_first", "select_layer_middle", "select_layer_last"]:
+    elif CONFIG.experiment in ["select_layer"]:
         model = ASHResNet18()
-
-    elif CONFIG.experiment in ['domain_adaptation']:
+    elif CONFIG.experiment in ["binarization_ablation" , "topKvalue"]:
+        model = ASHResNet18BinarizationAblation()
+    elif CONFIG.experiment in ['domain_adaptation',"binarization_ablation_DA" , "topKvalue_DA"]:
         model = ASHResNet18DA()
 
     elif CONFIG.experiment in ['domain_generalization']:

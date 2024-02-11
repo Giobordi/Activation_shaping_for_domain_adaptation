@@ -99,11 +99,11 @@ def load_data():
             path, label = line[0].split('/')[1:], int(line[1])
             target_examples.append((os.path.join(CONFIG.dataset_args['root'], *path), label))
         
-        if CONFIG.experiment in ['baseline', 'select_layer_all',"select_layer_each2", "select_layer_each3","select_layer_first", "select_layer_middle", "select_layer_last"]:
+        if CONFIG.experiment in ['baseline', "binarization_ablation" , "topKvalue","select_layer"]:
             train_dataset = BaseDataset(source_examples, transform=train_transform)
             test_dataset = BaseDataset(target_examples, transform=test_transform)
 
-        elif CONFIG.experiment in ['domain_adaptation'] :
+        elif CONFIG.experiment in ['domain_adaptation', "binarization_ablation_DA" , "topKvalue_DA"] :
             train_dataset = DomainAdaptationDataset(source_examples=source_examples, target_examples=target_examples, \
                                                     transform=train_transform) 
             test_dataset = BaseDataset(target_examples, transform=test_transform)
