@@ -29,6 +29,7 @@ def custom_activation_shaping_layer(activation_map: torch.Tensor, mask : torch.T
 # the input variable is processed by the layer (so does not use the input variable)
 def custom_ash_hook(module: nn.Module, input : torch.Tensor, output: torch.Tensor):  # to choose the best layer/s
     mask = torch.rand_like(output) ## there are a lot of 1 using 0.2 as threshold
+    mask = mask.to(device=output.device)
     new_output = custom_activation_shaping_layer(output, mask)
     return new_output
 
@@ -64,7 +65,7 @@ class ASHResNet18(nn.Module):
         self.hooks = []
         convolutional_layers = [layer for layer in self.modules() if isinstance(layer, nn.Conv2d)]
         all_module = [layer for layer in self.modules()]
-        print(f"Inizialization ASH layer {CONFIG.layer} experiment {CONFIG.experiment_name}")
+        print(f"Inizialization ASH layer {CONFIG.layer} experiment {CONFIG.experiment_name}")#select_layer
         global zero_density
         # zero_density = float(CONFIG.experiment_name.split("/")[0].split("_")[2])/10
         # print(f"Zero density {zero_density}")
@@ -92,8 +93,8 @@ class ASHResNet18(nn.Module):
             
         ## append the hook in the middle layer
         if CONFIG.layer == 'middle':
-            #self.hooks.append(convolutional_layers[len(convolutional_layers)//2].register_forward_hook(custom_ash_hook))  
-            self.hooks.append(convolutional_layers[10].register_forward_hook(binary_ash_hook))  
+            self.hooks.append(convolutional_layers[10].register_forward_hook(custom_ash_hook))  
+            #self.hooks.append(convolutional_layers[11].register_forward_hook(binary_ash_hook))  
         # append the hook to the last layer
         if CONFIG.layer == 'last':
             self.hooks.append(convolutional_layers[-1].register_forward_hook(custom_ash_hook))
@@ -111,7 +112,7 @@ class ASHResNet18DA(nn.Module):
         self.resnet = resnet18(weights=ResNet18_Weights)
         self.resnet.fc = nn.Linear(self.resnet.fc.in_features, 7)
         self.hooks = []
-   
+
     def forward(self, source_x : torch.Tensor, target_x : torch.Tensor = None):
         if self.training == True:
             self.mask = None
@@ -120,23 +121,26 @@ class ASHResNet18DA(nn.Module):
             ### middle layer
 
             if CONFIG.layer == 'middle':
-                middle_layer = convolutional_layers[len(convolutional_layers)//2] #10
+                middle_layer = convolutional_layers[11] #10
                 self.hooks.append(middle_layer.register_forward_hook(self.wrapper_save_activation_map_target()))
             else :
                 raise ValueError("Layer not supported")
-            #with torch.no_grad():
-            self.resnet(target_x)
+            
+            self.eval()
+            with torch.no_grad():
+                self.resnet(target_x)
 
+            self.train()
             for hook in self.hooks:
                 hook.remove()
             self.hooks = list()
             #the middle layer is the best one where to put the hook (previous experiments)
             if CONFIG.layer == 'middle':
-                if CONFIG.experiment_name == "domain_adaptation":   
+                if CONFIG.experiment == "domain_adaptation":   
                     self.hooks.append(middle_layer.register_forward_hook(self.wrapper_across_domain_adaptation()))
-                elif CONFIG.experiment_name == "binarization_ablation_DA":
+                elif CONFIG.experiment == "binarization_ablation_DA":
                     self.hooks.append(middle_layer.register_forward_hook(self.wrapper_binarization_ablation_DA()))
-                elif CONFIG.experiment_name == "topKvalue_DA":
+                elif CONFIG.experiment == "topKvalue_DA":
                     self.hooks.append(middle_layer.register_forward_hook(self.wrapper_topk_ablation_DA()))
                 else:
                     raise ValueError("Experiment not supported")
@@ -180,10 +184,9 @@ class ASHResNet18DA(nn.Module):
             ## keep the top k values of the output tensor
             k_values, k_index = torch.topk(output, k=K, dim=1,largest=True)
             top_K_tensor = torch.zeros_like(output)
-            top_K_tensor[k_index] = binarized_mask[k_index]
+            top_K_tensor.scatter_(1, k_index, binarized_mask)
             return output * top_K_tensor
         return topk_ablation_DA_hook
-
 
 
 # Extension 1 : Domain Generalization
@@ -207,17 +210,20 @@ class ASHResNet18DomainGeneralization(nn.Module):
             
             
             if CONFIG.layer == 'middle':
-                middle_layer = [layer for layer in self.modules() if isinstance(layer, nn.Conv2d)][10]
+                middle_layer = [layer for layer in self.modules() if isinstance(layer, nn.Conv2d)][9]
                 self.hooks.append(middle_layer.register_forward_hook(self.wrapper_binary_ash_hook_DG()))
             elif CONFIG.layer == 'last':
                 last_layer = [layer for layer in self.modules() if isinstance(layer, nn.Conv2d)][-1]
                 self.hooks.append(last_layer.register_forward_hook(self.wrapper_binary_ash_hook_DG()))
             else:
                 raise ValueError("Layer not supported")
-            #with torch.no_grad():
-            self.resnet(xs1)
-            self.resnet(xs2)
-            self.resnet(xs3)
+            
+            self.eval()
+            with torch.no_grad():
+
+                output1 = self.resnet(xs1)
+                output2 = self.resnet(xs2)
+                output3 = self.resnet(xs3)
 
             for hook in self.hooks:
                 hook.remove()
@@ -228,7 +234,7 @@ class ASHResNet18DomainGeneralization(nn.Module):
                 self.hooks.append(middle_layer.register_forward_hook(self.wrapper_DG_ash_hook()))
             elif CONFIG.layer == 'last':
                 self.hooks.append(last_layer.register_forward_hook(self.wrapper_DG_ash_hook()))
-                
+            self.train()    
             feature_xs1 = self.resnet(xs1)
             feature_xs2 = self.resnet(xs2)
             feature_xs3 = self.resnet(xs3)
@@ -276,18 +282,18 @@ def binarization_ablation_custom_ash_layer(activation_map: torch.Tensor, mask : 
 
 def binarization_ablation_ash_hook(module: nn.Module, input : torch.Tensor, output: torch.Tensor):
     mask = torch.rand_like(output) ## random mask
-    new_output = binarization_ablation_custom_ash_layer(output, mask)
+    new_output = output * mask
     return new_output
 
 
 ## extension 2.2 binarization of the mask and keep the top K values of the input tensor
 def topk_ablation_ash_hook(module: nn.Module, input : torch.Tensor, output: torch.Tensor):
     mask = torch.rand_like(output)
-    binarized_mask = torch.where(mask > 0, 1.0, 0.0)
+    binarized_mask = torch.where(mask > 0, torch.tensor(1.0,dtype=output.dtype), torch.tensor(0.0,dtype=output.dtype))
     ## keep the top k values of the output tensor
     k_values, k_index = torch.topk(output, k=K, dim=1,largest=True)
     top_K_tensor = torch.zeros_like(output)
-    top_K_tensor[k_index] = binarized_mask[k_index]
+    top_K_tensor.scatter_(1, k_index, binarized_mask)
     return output * top_K_tensor
 
 class ASHResNet18BinarizationAblation(nn.Module):
@@ -298,7 +304,11 @@ class ASHResNet18BinarizationAblation(nn.Module):
         self.hooks = []
         print(f"Inizialization Binarization Ablation layer {CONFIG.layer} experiment {CONFIG.experiment_name}")
         convolutional_layers = [layer for layer in self.modules() if isinstance(layer, nn.Conv2d)]
-            
+        if CONFIG.experiment == "topKvalue":
+            global K
+            K = int(CONFIG.experiment_name.split("/")[0].split("_")[1])
+
+
         if CONFIG.layer == 'all': 
             print("All layers")
             if CONFIG.experiment == "binarization_ablation":
@@ -344,7 +354,7 @@ class ASHResNet18BinarizationAblation(nn.Module):
             
         ## append the hook in the middle layer
         if CONFIG.layer == 'middle':
-            print("Middle layer")
+            print(f"Middle layer {K}")
             if CONFIG.experiment == "binarization_ablation":
                         self.hooks.append(convolutional_layers[10].register_forward_hook(binarization_ablation_ash_hook))
             elif CONFIG.experiment == "topKvalue":
