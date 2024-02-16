@@ -63,40 +63,69 @@ def train(model, data):
     
     # Optimization loop
     for epoch in range(cur_epoch, CONFIG.epochs):
+        
         model.train()
-
         tqdm_iterator = tqdm(data['train'])
         for batch_idx, batch in enumerate(tqdm_iterator):
             tqdm_iterator.set_description(f'current epoch {epoch + 1}/{CONFIG.epochs}')
             # Compute loss
-            with torch.autocast(device_type=CONFIG.device, dtype=torch.float16, enabled=True):
-                if CONFIG.experiment in ['baseline', "binarization_ablation" , "topKvalue","select_layer"]:
+            
+            if CONFIG.experiment in ['baseline', "binarization_ablation" , "topKvalue","select_layer"]:
+                with torch.autocast(device_type=CONFIG.device, dtype=torch.float16, enabled=True):
                     x, y = batch
                     x, y = x.to(CONFIG.device), y.to(CONFIG.device)
                     loss = F.cross_entropy(model(x), y)
 
-                elif CONFIG.experiment in ['domain_adaptation', "binarization_ablation_DA" , "topKvalue_DA"]:
-                    source_x, source_y, target_x = batch
-                    source_x, source_y , target_x = source_x.to(CONFIG.device), source_y.to(CONFIG.device) , target_x.to(CONFIG.device)
-                    source_output = model(source_x, target_x)
-                    loss = F.cross_entropy(source_output, source_y)
+            elif CONFIG.experiment in ['domain_adaptation', "binarization_ablation_DA" , "topKvalue_DA"]:
+                
+                source_x, source_y, target_x = batch
+                source_x, source_y , target_x = source_x.to(CONFIG.device), source_y.to(CONFIG.device) , target_x.to(CONFIG.device)
+                with torch.autocast(device_type=CONFIG.device, dtype=torch.float16, enabled=True):
+                    with torch.no_grad():
+                        model.eval()
+                        model.reset_hook()
+                        model.set_hook()
+                        _ = model(target_x)
+                        model.train()
+                with torch.autocast(device_type=CONFIG.device, dtype=torch.float16, enabled=True):
+                    #source_x.requires_grad = True
+                    loss = F.cross_entropy(model(source_x), source_y)
+                    model.reset_hook()
 
-                elif CONFIG.experiment in ['domain_generalization']:
-                    source_xs1,source_xs2,source_xs3, source_y = batch  #combines all the source domains
-                    source_xs1,source_xs2,source_xs3, source_y = source_xs1.to(CONFIG.device), source_xs2.to(CONFIG.device),source_xs3.to(CONFIG.device), source_y.type(torch.long).to(CONFIG.device)
+
+                
+            elif CONFIG.experiment in ['domain_generalization']:
+                source_xs1,source_xs2,source_xs3, source_y = batch  #combines all the source domains
+                source_xs1,source_xs2,source_xs3, source_y = source_xs1.to(CONFIG.device), source_xs2.to(CONFIG.device),source_xs3.to(CONFIG.device), source_y.type(torch.long).to(CONFIG.device)
+
+                with torch.autocast(device_type=CONFIG.device, dtype=torch.float16, enabled=True):
+                    with torch.no_grad():
+                        model.eval()
+                        model.reset_hook()
+                        model.reset_mask()
+                        model.set_setting_hook()
+                        model(source_xs1)
+                        model(source_xs2)
+                        model(source_xs3)
+                        
+                        model.reset_hook()
+                        model.set_training_hook()
+
+                with torch.autocast(device_type=CONFIG.device, dtype=torch.float16, enabled=True):   
                     loss = F.cross_entropy(
-                        model((source_xs1,source_xs2,source_xs3)),
+                        model(torch.cat((source_xs1,source_xs2,source_xs3))),
                         torch.cat((source_y, source_y, source_y))
                         )
+                    model.reset_hook()
 
-                # Optimization step
-                scaler.scale(loss / CONFIG.grad_accum_steps).backward()
+            # Optimization step
+            scaler.scale(loss / CONFIG.grad_accum_steps).backward()
 
-                if ((batch_idx + 1) % CONFIG.grad_accum_steps == 0) or (batch_idx + 1 == len(data['train'])):
-                    scaler.step(optimizer)
-                    optimizer.step()
-                    optimizer.zero_grad(set_to_none=True)
-                    scaler.update()
+            if ((batch_idx + 1) % CONFIG.grad_accum_steps == 0) or (batch_idx + 1 == len(data['train'])):
+                scaler.step(optimizer)
+                optimizer.step()
+                optimizer.zero_grad(set_to_none=True)
+                scaler.update()
 
         scheduler.step()
         
