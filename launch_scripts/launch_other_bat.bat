@@ -1,0 +1,3 @@
+call launch_scripts/bestk_layer.bat
+call launch_scripts/bestKmiddle.bat
+call launch_scripts/domainGeneralization.bat
