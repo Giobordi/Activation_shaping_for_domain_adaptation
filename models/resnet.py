@@ -124,8 +124,17 @@ class ASHResNet18DA(nn.Module):
         middle_layer = convolutional_layers[10]
         if str(CONFIG.layer).strip() == 'middle' and str(CONFIG.experiment).strip() == "binarization_ablation_DA":
             self.hooks.append(middle_layer.register_forward_hook(self.wrapper_binarization_ablation_DA()))
-        elif CONFIG.layer == 'middle' and CONFIG.experiment == "topKvalue_DA":
-            self.hooks.append(middle_layer.register_forward_hook(self.wrapper_topk_ablation_DA()))    
+        elif CONFIG.experiment == "topKvalue_DA":
+            global K
+            K = CONFIG.dataset_args['K']
+            if CONFIG.layer == 'middle':
+                self.hooks.append(middle_layer.register_forward_hook(self.wrapper_topk_ablation_DA()))
+            elif CONFIG.layer == 'last':
+                last_layer = [layer for layer in convolutional_layers][-1]
+                self.hooks.append(last_layer
+                                  .register_forward_hook(self.wrapper_topk_ablation_DA()))
+            else :
+                raise ValueError("Layer not supported")
         elif CONFIG.layer == 'middle' and CONFIG.experiment == "domain_adaptation":
             self.hooks.append(middle_layer.register_forward_hook(self.wrapper_across_domain_adaptation()))
         else :
@@ -161,10 +170,11 @@ class ASHResNet18DA(nn.Module):
         def topk_ablation_DA_hook(model, input, output):
             if self.mask == None:
                 
-                binarized_mask = torch.where(self.mask > 0, 1.0, 0.0)
+                binarized_mask = torch.where(output > 0, 1.0, 0.0)
                 ## keep the top k values of the output tensor
                 self.mask = calculate_topK_for_each_sample(output) * binarized_mask
             else :
+                #print(output.shape)
                 new_output = output * self.mask
                 self.mask = None
                 return new_output
@@ -260,7 +270,8 @@ def topk_ablation_ash_hook(module: nn.Module, input : torch.Tensor, output: torc
 
 def calculate_topK_for_each_sample(output: torch.Tensor) :
 
-    current_k = int(K * (output.shape[2]**2) * output.shape[1]) ## K is a percentage
+    #current_k = int(K * (output.shape[2]**2) * output.shape[1]) ## K is a percentage
+    current_k = K
     flatten_tensor = output.view(output.shape[0], -1)
     #print(f"Flatten tensor {flatten_tensor.shape}")
     k_values, k_index = torch.topk(flatten_tensor, k=current_k, largest=True, dim=1)
@@ -337,12 +348,11 @@ class ASHResNet18BinarizationAblation(nn.Module):
             
         ## append the hook in the middle layer
         if CONFIG.layer == 'middle':
-            print(f"Middle layer {K}")
+            #print(f"Middle layer {K}")
             if CONFIG.experiment == "binarization_ablation":
                         self.hooks.append(convolutional_layers[10].register_forward_hook(binarization_ablation_ash_hook))
             elif CONFIG.experiment == "topKvalue":
                 self.hooks.append(convolutional_layers[10].register_forward_hook(topk_ablation_ash_hook))
-                self.hooks.append(convolutional_layers[12].register_forward_hook(topk_ablation_ash_hook))
             else :
                 raise ValueError("Experiment not supported")
         # append the hook to the last layer

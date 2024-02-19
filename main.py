@@ -88,7 +88,6 @@ def train(model, data):
                         _ = model(target_x)
                         model.train()
                 with torch.autocast(device_type=CONFIG.device, dtype=torch.float16, enabled=True):
-                    #source_x.requires_grad = True
                     loss = F.cross_entropy(model(source_x), source_y)
                     model.reset_hook()
 
@@ -112,6 +111,7 @@ def train(model, data):
                         model.set_training_hook()
 
                 with torch.autocast(device_type=CONFIG.device, dtype=torch.float16, enabled=True):   
+                    model.train()
                     loss = F.cross_entropy(
                         model(torch.cat((source_xs1,source_xs2,source_xs3))),
                         torch.cat((source_y, source_y, source_y))
